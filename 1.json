@@ -1,0 +1,9 @@
+{
+  "name": "Forest Region",
+  "description": "A lush forest region full of resources.",
+  "image": "https://balendu9.github.io/nft-images/1.png",
+  "attributes": [
+    { "trait_type": "Terrain", "value": "Forest" },
+    { "trait_type": "Resource Boost", "value": "Wood" }
+  ]
+}
