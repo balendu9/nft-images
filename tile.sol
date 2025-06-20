@@ -28,7 +28,6 @@ contract Tiles {
     Compute public computeContract;
     UsersContract public userContract;
     
-
     uint8  public constant GRID = 3;                      // 3×3
     uint256 public constant GRID_SIZE = 9;         // = 9
     
@@ -66,7 +65,8 @@ contract Tiles {
     }
 
     // regionId -> Tile[9]
-    mapping(uint256 => TileData[GRID_SIZE]) public regionTiles;
+    // mapping(uint256 => TileData[GRID_SIZE]) public regionTiles;
+    mapping(uint256 => TileData[]) public regionTiles;
     mapping(uint256 => bool) public regionInitialzied;
 
     modifier onlyRegionOwner(uint256 regionId) {
@@ -97,13 +97,14 @@ contract Tiles {
     }
 
     function calculateRegionMeta(uint256 regionId) internal {
-        TileData[9] memory tiles = regionTiles[regionId];
+        TileData[] memory tiles = regionTiles[regionId];
+        uint256 total = tiles.length;
 
         uint8 pollution;
         uint8 fertility;
         uint8 waterSum;
 
-        for (uint8 i = 0; i < 9; i++) {
+        for (uint8 i = 0; i < total; i++) {
             if (tiles[i].factoryTypeId > 0) {
                 pollution += 10;
             }
@@ -111,8 +112,8 @@ contract Tiles {
             waterSum += tiles[i].waterLevel;
         }
 
-        uint8 avgFertility = fertility/ 9;
-        uint8 avgWater = waterSum / 9;
+        uint8 avgFertility = fertility/ uint8(total);
+        uint8 avgWater = waterSum / uint8(total);
 
         uint8 ecoScore = 100 - pollution + avgFertility + avgWater;
         regionMeta[regionId] = RegionMeta({
@@ -127,7 +128,7 @@ contract Tiles {
     uint256 public cropPrice = 50000 * 10 ** 18;
     function plantCrop(uint256 regionId, uint8 tileId, uint8 cropTypeId) 
     external onlyRegionOwner(regionId) {
-        require(tileId < GRID_SIZE, "BAD_INDEX");
+        require(tileId < regionTiles[regionId].length, "BAD_INDEX");
         TileData storage tile = regionTiles[regionId][tileId];
         require(!tile.isBeingUsed, "TILE_OCCUPIED");
         require(
@@ -146,7 +147,7 @@ contract Tiles {
     uint256 public factoryPrice = 500000 * 10 * 18;
     function buildFactory(uint256 regionId, uint8 index, uint8 factoryType) 
     external onlyRegionOwner(regionId){
-        require(tileId < GRID_SIZE, "BAD_INDEX" );
+        require(tileId < regionTiles[regionId], "BAD_INDEX" );
         TileData storage tile = regionTiles[regionId][tileId];
         require(!tile.isBeingUsed, "TILE_OCCUPIED");
         require(
@@ -166,7 +167,7 @@ contract Tiles {
     mapping(uint256 => mapping(uint32 => uint256)) public lastWateredTime;
     function waterCrop(uint256 regionId, uint32 tileId) 
     external onlyRegionOwner(regionId) {
-        require(tileId < GRID_SIZE, "BAD_INDEX" );
+        require(tileId < regionTiles[regionId], "BAD_INDEX" );
         TileData storage tile = regionTiles[regionId][tileId];
         require(tile.isBeingUsed && tile.isCrop, "NO_CROP_HERE");
 
@@ -179,10 +180,12 @@ contract Tiles {
 
         tile.waterlevel += 7;
         tile.growthStage += growth;
+        calculateRegionMeta(regionId);
     }
 
     function fertilizeCrop(uint256 regionId, uint32 tileId) 
     external onlyRegionOwner(regionId) {
+        require(tileId < regionTiles[regionId], "BAD_INDEX" );
         TileData storage tile = regionTiles[regionId][tileId];
         require(tile.isBeingUsed && tile.isCrop, "NO_CROP_HERE");
         require(tile.fertility <= 100, "Already max fertility");
@@ -197,10 +200,12 @@ contract Tiles {
 
         tile.fertility = 100;
         tile.growthStage += growth;
+        calculateRegionMeta(regionId);
     }
 
     function harvestCrop(uint256 regionId, uint32 tileId) 
     external onlyRegionOwner(regionId) {
+        require(tileId < regionTiles[regionId], "BAD_INDEX" );
         TileData storage tile = regionTiles[regionId][tileId];
         require(tile.isBeingUsed && tile.isCrop, "NO_CROP_HERE");
         require(tile.growthStage == 100, "NOT_YET_GROWN");
@@ -214,9 +219,35 @@ contract Tiles {
             tile.cropTypeId = 0;
             tile.fertility = regionMeta[regionId].fertilityIndex / 10;
             tile.waterLevel = regionMeta[regionId].fertilityIndex / 10;
-
         }
+        calculateRegionMeta(regionId);
+    }
 
+
+    uint256 public tileExpansionPrice = 1000000 * 10 ** 18;
+    function expandRegion(uint256 regionId) 
+    external onlyRegionOwner(regionId) {
+        require(regionInitialzied[regionId], "NOT_INITIALIZED");
+
+        require(
+            token.transferFrom(msg.sender, admin, tileExpansionPrice), 
+            "TOKEN_TRANSFER_FAILED"
+        );
+
+        uint256 newTileId = regionTiles[regionId].length;
+
+        regionTiles[regionId].push(TileData({
+            id: uint32(newTileId),
+            isBeingUsed: false,
+            isCrop: false,
+            cropTypeId: 0,
+            factoryTypeId: 0,
+            fertility: 0,
+            waterLevel: 0,
+            growthStage: 0
+        }));
+
+        calculateRegionMeta(regionId);
     }
 
 }
